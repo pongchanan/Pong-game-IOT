@@ -1,8 +1,20 @@
 import pygame
 import random
 from math import sqrt, pow
+import RPi.GPIO as GPIO
+from mpu6050 import mpu6050
+import time
 
 pygame.init()
+BUZZER_PIN = 19
+mpu6050_1_address = 0x68
+mpu6050_2_address = 0x69
+
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(BUZZER_PIN, GPIO.OUT)
+
+joy1 = mpu6050(mpu6050_1_address)
+joy2 = mpu6050(mpu6050_2_address)
 
 # Font that is used to render the text
 titlefont = pygame.font.Font('freesansbold.ttf', 80)
@@ -21,137 +33,157 @@ pygame.display.set_caption("Pong")
 
 clock = pygame.time.Clock()
 
+def read_sensor_data(joy):
+    # Read the accelerometer values
+    accelerometer_data = joy.get_accel_data()
+
+    # Read the gyroscope values
+    gyroscope_data = joy.get_gyro_data()
+
+    # Read temp
+    temperature = joy.get_temp()
+
+    return accelerometer_data, gyroscope_data, temperature
+
+def beep(duration=0.1):
+    GPIO.output(BUZZER_PIN, GPIO.HIGH)
+    time.sleep(duration)
+    GPIO.output(BUZZER_PIN, GPIO.LOW)
+
 class Striker:
-		# Take the initial position, dimensions, speed and color of the object
-	def __init__(self, posx, posy, width, height, speed, color):
-		self.posx = posx
-		self.posy = posy
-		self.width = width
-		self.height = height
-		self.speed = speed
-		self.color = color
-		# create
+    # Take the initial position, dimensions, speed and color of the object
+    def __init__(self, posx, posy, width, height, speed, color):
+        self.posx = posx
+        self.posy = posy
+        self.width = width
+        self.height = height
+        self.speed = speed
+        self.color = color
+        # create
         # pygame.Rect(topleftx, toplefty, width, height)
-		self.Rect = pygame.Rect(posx, posy, width, height)
-		# draw
-		self.display()
+        self.Rect = pygame.Rect(posx, posy, width, height)
+        # draw
+        self.display()
 
-	# Used to display the object on the screen
-	def display(self):
-		pygame.draw.rect(screen, self.color, self.Rect)
+    # Used to display the object on the screen
+    def display(self):
+        pygame.draw.rect(screen, self.color, self.Rect)
 
-	def update(self, yFac):
-		self.posy = self.posy + self.speed*yFac
+    def update(self, sensor):
+        accel_data = sensor.get_accel_data()
+        y_acceleration = accel_data['y']
+        
+        # Adjust this value to change sensitivity
+        sensitivity = 2
+        
+        self.posy += y_acceleration * sensitivity
 
-        # make sure you dont go offscreen
-		if self.posy <= 0:
-			self.posy = 0
-		if self.posy + self.height >= HEIGHT:
-			self.posy = HEIGHT-self.height
+        if self.posy <= 0:
+            self.posy = 0
+        if self.posy + self.height >= HEIGHT:
+            self.posy = HEIGHT - self.height
 
-		# Updating the rect with the new values
-		self.Rect.topleft = (self.posx, self.posy)#, self.width, self.height)
+        self.Rect.topleft = (self.posx, self.posy)
 
-	def displayScore(self, text, score, x, y, color):
-		text = font.render(text+str(score), True, color)
-		textRect = text.get_rect()
-		textRect.center = (x, y)
+    def displayScore(self, text, score, x, y, color):
+        text = font.render(text+str(score), True, color)
+        textRect = text.get_rect()
+        textRect.center = (x, y)
 
-		screen.blit(text, textRect)
+        screen.blit(text, textRect)
 
-	# to be used for collision
-	def getRect(self):
-		return self.Rect
-
+    # to be used for collision
+    def getRect(self):
+        return self.Rect
 class Ball:
-	def __init__(self, posx, posy, radius, speed, color):
-		self.posx = posx
-		self.posy = posy
-		self.radius = radius
-		self.basespeed = speed
-		self.netspeed = speed
-		self.color = color
-		self.xFac = 1
-		self.yFac = -1
-		self.firstTime = 1
-		self.lasthit = None	
-		# vertical speed (angle)
-		self.yspeed = random.randrange(0, int(self.netspeed-2))
-		
-		self.update_xspeed()
-		self.display()
+    def __init__(self, posx, posy, radius, speed, color):
+        self.posx = posx
+        self.posy = posy
+        self.radius = radius
+        self.basespeed = speed
+        self.netspeed = speed
+        self.color = color
+        self.xFac = 1
+        self.yFac = -1
+        self.firstTime = 1
+        self.lasthit = None 
+        # vertical speed (angle)
+        self.yspeed = random.randrange(0, int(self.netspeed-2))
+        
+        self.update_xspeed()
+        self.display()
 
-	def update_xspeed(self):
+    def update_xspeed(self):
         # Calculate yspeed based on netspeed and xspeed
-		self.xspeed = sqrt(pow(self.netspeed, 2) - pow(self.yspeed, 2))
+        self.xspeed = sqrt(pow(self.netspeed, 2) - pow(self.yspeed, 2))
 
-	def display(self):
-		pygame.draw.circle(screen, self.color, (self.posx, self.posy), self.radius)
+    def display(self):
+        pygame.draw.circle(screen, self.color, (self.posx, self.posy), self.radius)
 
-	def update(self):
-		# move
-		self.posx += self.xspeed*self.xFac
-		self.posy += self.yspeed*self.yFac
+    def update(self):
+        # move
+        self.posx += self.xspeed*self.xFac
+        self.posy += self.yspeed*self.yFac
 
         # flip yFac
-		if self.posy <= 0 or self.posy >= HEIGHT:
-			self.yFac *= -1
+        if self.posy <= 0 or self.posy >= HEIGHT:
+            self.yFac *= -1
 
         # if ball goes out if bound on either players' sides, set firsttime to 0 so score only increments once
-		# return 1 if player 1 scores
-		# return -1 if player 2 scores
-		# return 0 if neither scored yet
-		if self.posx <= 0 and self.firstTime:
-			self.firstTime = 0
-			return 1
-		if self.posx >= WIDTH and self.firstTime:
-			self.firstTime = 0
-			return -1
-		else:
-			return 0
+        # return 1 if player 1 scores
+        # return -1 if player 2 scores
+        # return 0 if neither scored yet
+        if self.posx <= 0 and self.firstTime:
+            self.firstTime = 0
+            return 1
+        if self.posx >= WIDTH and self.firstTime:
+            self.firstTime = 0
+            return -1
+        else:
+            return 0
 
-	def reset(self):
-		# reset ball position to the middle of the screen
-		self.posx = WIDTH//2
-		self.posy = HEIGHT//2
-		self.lasthit = None
-		self.netspeed = self.basespeed
-		self.yspeed = random.randrange(0, int(self.netspeed-2))
-		self.update_xspeed()
-		# ball goes to the side that scored
-		self.xFac *= -1
-		self.firstTime = 1
+    def reset(self):
+        # reset ball position to the middle of the screen
+        self.posx = WIDTH//2
+        self.posy = HEIGHT//2
+        self.lasthit = None
+        self.netspeed = self.basespeed
+        self.yspeed = random.randrange(0, int(self.netspeed-2))
+        self.update_xspeed()
+        # ball goes to the side that scored
+        self.xFac *= -1
+        self.firstTime = 1
 
-	# when a striker hits the ball, reflect xFac
-	def hit(self, striker):
-		striker_center = striker.posy + striker.height // 2
-		hit_distance = self.posy - striker_center
-		ratio = hit_distance/75
-		if ratio > 0:
-			self.yFac = 1
-		if ratio < 0:
-			self.yFac = -1
-		self.yspeed = abs(ratio * self.netspeed)
-		self.netspeed += 0.5
-		self.update_xspeed()
-		self.xFac *= -1
-		self.lasthit = striker
+    def hit(self, striker):
+        beep()
+        striker_center = striker.posy + striker.height // 2
+        hit_distance = self.posy - striker_center
+        ratio = hit_distance/75
+        if ratio > 0:
+            self.yFac = 1
+        if ratio < 0:
+            self.yFac = -1
+        self.yspeed = abs(ratio * self.netspeed)
+        self.netspeed += 0.5
+        self.update_xspeed()
+        self.xFac *= -1
+        self.lasthit = striker
 
-		print(f"Hit distance: {hit_distance}")
-		print(f"Ratio: {ratio}")
-		print(f"netspeed: {self.netspeed}")
-		print(f"yspeed: {self.yspeed}")
+        print(f"Hit distance: {hit_distance}")
+        print(f"Ratio: {ratio}")
+        print(f"netspeed: {self.netspeed}")
+        print(f"yspeed: {self.yspeed}")
   
-	def checkCollision(self, players):
-		for player in players:
-			if self.getRect().colliderect(player.getRect()):
-				if self.lasthit != player:
-					self.hit(player)
-					break
+    def checkCollision(self, players):
+        for player in players:
+            if self.getRect().colliderect(player.getRect()):
+                if self.lasthit != player:
+                    self.hit(player)
+                    break
 
-	# to be used for collision
-	def getRect(self): return pygame.Rect(self.posx - self.radius, self.posy - self.radius, self.radius * 2, self.radius * 2)
-
+    # to be used for collision
+    def getRect(self):
+        return pygame.Rect(self.posx - self.radius, self.posy - self.radius, self.radius * 2, self.radius * 2)
 def start_screen():
     FPS = 30
 
@@ -237,10 +269,10 @@ def game():
         player2YFac = (keys[pygame.K_DOWN] - keys[pygame.K_UP])
 
         # Update player positions and ball
-        player1.update(player1YFac)
-        player2.update(player2YFac)
-        ball.checkCollision(players)
+        player1.update(joy1)
+        player2.update(joy2)
         
+        ball.checkCollision(players)
         point = ball.update()
 
         if point == -1:
@@ -290,9 +322,15 @@ def game():
         clock.tick(FPS)
 
 def main():
-    while True:
-        start_screen()
-        game()
+    try:
+        while True:
+            start_screen()
+            game()
+    finally:
+        GPIO.cleanup()
+
+main()
+pygame.quit()
 
 main()
 pygame.quit()
