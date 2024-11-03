@@ -1,5 +1,6 @@
 import pygame
 from game import Game
+import RPi.GPIO as GPIO
 
 def main():
     """Main entry point of the game"""
@@ -15,4 +16,8 @@ def main():
         pygame.quit()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        pygame.quit()
+        GPIO.cleanup()
