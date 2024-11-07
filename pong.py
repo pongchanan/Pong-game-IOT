@@ -13,8 +13,14 @@ mpu6050_2_address = 0x69
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(BUZZER_PIN, GPIO.OUT)
 
-joy1 = mpu6050(mpu6050_1_address)
-joy2 = mpu6050(mpu6050_2_address)
+try:
+    joy1 = mpu6050(mpu6050_1_address)
+    joy2 = mpu6050(mpu6050_2_address)
+except IOError:
+    print("Error initializing MPU6050 sensors. Exiting.")
+    GPIO.cleanup()
+    pygame.quit()
+    exit()
 
 # Font that is used to render the text
 titlefont = pygame.font.Font('freesansbold.ttf', 80)
@@ -34,16 +40,20 @@ pygame.display.set_caption("Pong")
 clock = pygame.time.Clock()
 
 def read_sensor_data(joy):
-    # Read the accelerometer values
-    accelerometer_data = joy.get_accel_data()
+    try:
+        # Read the accelerometer values
+        accelerometer_data = joy.get_accel_data()
 
-    # Read the gyroscope values
-    gyroscope_data = joy.get_gyro_data()
+        # Read the gyroscope values
+        gyroscope_data = joy.get_gyro_data()
 
-    # Read temp
-    temperature = joy.get_temp()
+        # Read temp
+        temperature = joy.get_temp()
 
-    return accelerometer_data, gyroscope_data, temperature
+        return accelerometer_data, gyroscope_data, temperature
+    except IOError:
+        print(f"Error reading from MPU6050 sensor at address {hex(joy.address)}.")
+        return None, None, None
 
 def beep(duration=0.1):
     GPIO.output(BUZZER_PIN, GPIO.HIGH)
@@ -59,10 +69,7 @@ class Striker:
         self.height = height
         self.speed = speed
         self.color = color
-        # create
-        # pygame.Rect(topleftx, toplefty, width, height)
         self.Rect = pygame.Rect(posx, posy, width, height)
-        # draw
         self.display()
 
     # Used to display the object on the screen
@@ -71,19 +78,20 @@ class Striker:
 
     def update(self, sensor):
         accel_data = sensor.get_accel_data()
-        y_acceleration = accel_data['y']
-        
-        # Adjust this value to change sensitivity
-        sensitivity = 2
-        
-        self.posy += y_acceleration * sensitivity
+        if accel_data:
+            y_acceleration = accel_data['y']
+            
+            # Adjust this value to change sensitivity
+            sensitivity = 2
+            
+            self.posy += y_acceleration * sensitivity
 
-        if self.posy <= 0:
-            self.posy = 0
-        if self.posy + self.height >= HEIGHT:
-            self.posy = HEIGHT - self.height
+            if self.posy <= 0:
+                self.posy = 0
+            if self.posy + self.height >= HEIGHT:
+                self.posy = HEIGHT - self.height
 
-        self.Rect.topleft = (self.posx, self.posy)
+            self.Rect.topleft = (self.posx, self.posy)
 
     def displayScore(self, text, score, x, y, color):
         text = font.render(text+str(score), True, color)
@@ -95,6 +103,7 @@ class Striker:
     # to be used for collision
     def getRect(self):
         return self.Rect
+
 class Ball:
     def __init__(self, posx, posy, radius, speed, color):
         self.posx = posx
@@ -107,7 +116,6 @@ class Ball:
         self.yFac = -1
         self.firstTime = 1
         self.lasthit = None 
-        # vertical speed (angle)
         self.yspeed = random.randrange(0, int(self.netspeed-2))
         
         self.update_xspeed()
@@ -184,6 +192,7 @@ class Ball:
     # to be used for collision
     def getRect(self):
         return pygame.Rect(self.posx - self.radius, self.posy - self.radius, self.radius * 2, self.radius * 2)
+
 def start_screen():
     FPS = 30
 
@@ -199,8 +208,10 @@ def start_screen():
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                GPIO.cleanup()
                 pygame.quit()
                 return
+
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_w:
                     player1ready = True
@@ -233,9 +244,10 @@ def start_screen():
                text_rect = title_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 50))
                screen.blit(title_text, text_rect)
 
-
         pygame.display.update()
         clock.tick(FPS)
+
+    return player1ready, player2ready
 
 def game():
     FPS = 60
@@ -260,6 +272,7 @@ def game():
         screen.fill(BLACK)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                GPIO.cleanup()
                 pygame.quit()
                 return
 
@@ -293,8 +306,9 @@ def game():
                 victory_text_rect = title_text.get_rect(center=(WIDTH // 2 + 70, HEIGHT // 2 + 50))
                 screen.blit(victory_text, victory_text_rect)
                 gameend = True
+                timer = 0
         
-		# Draw game objects
+        # Draw game objects
         player1.display()
         player2.display()
         ball.display()
@@ -324,13 +338,11 @@ def game():
 def main():
     try:
         while True:
-            start_screen()
-            game()
+            player1ready, player2ready = start_screen()
+            if player1ready and player2ready:
+                game()
     finally:
         GPIO.cleanup()
+        pygame.quit()
 
 main()
-pygame.quit()
-
-main()
-pygame.quit()
