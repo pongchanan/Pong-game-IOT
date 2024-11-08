@@ -15,12 +15,19 @@ GPIO.setup(BUZZER_PIN, GPIO.OUT)
 
 try:
     joy1 = mpu6050(mpu6050_1_address)
-    joy2 = mpu6050(mpu6050_2_address)
 except IOError:
-    print("Error initializing MPU6050 sensors. Exiting.")
+    print("Error initializing MPU6050 sensors in " + "0x68" + ". Exiting.")
     GPIO.cleanup()
     pygame.quit()
     exit()
+try:
+    joy2 = mpu6050(mpu6050_2_address)
+except IOError:
+    print("Error initializing MPU6050 sensors in " + "0x69" + ". Exiting.")
+    GPIO.cleanup()
+    pygame.quit()
+    exit()
+
 
 # Font that is used to render the text
 titlefont = pygame.font.Font('freesansbold.ttf', 80)
@@ -341,8 +348,11 @@ def main():
             player1ready, player2ready = start_screen()
             if player1ready and player2ready:
                 game()
+    except IOError:
+        print("Error reading from MPU6050 sensors. Exiting.")
     finally:
         GPIO.cleanup()
         pygame.quit()
-
-main()
+        
+if __name__ == "__main__":
+    main()
