@@ -4,6 +4,7 @@ from math import sqrt, pow
 import RPi.GPIO as GPIO
 from mpu6050 import mpu6050
 import time
+from threading import Thread
 
 pygame.init()
 BUZZER_PIN = 19
@@ -65,7 +66,7 @@ def read_sensor_data(joy):
 def beep(duration=0.1):
     GPIO.output(BUZZER_PIN, GPIO.HIGH)
     time.sleep(duration)
-    GPIO.output(BUZZER_PIN, GPIO.LOW)
+    GPIO.output(BUZZER_PIN, GPIO.LOW) 
 
 class Striker:
     # Take the initial position, dimensions, speed and color of the object
@@ -170,7 +171,10 @@ class Ball:
         self.firstTime = 1
 
     def hit(self, striker):
-        beep()
+        buzzer_thread = Thread(target=beep)
+        buzzer_thread.daemon = True
+        buzzer_thread.start()
+        
         striker_center = striker.posy + striker.height // 2
         hit_distance = self.posy - striker_center
         ratio = hit_distance/75
@@ -270,6 +274,8 @@ def game():
     
     players = [player1, player2]
     player1Score, player2Score = 0, 0
+
+    buzzer_thread = None
     
     while True:
         if gameend:
@@ -353,6 +359,6 @@ def main():
     finally:
         GPIO.cleanup()
         pygame.quit()
-        
+
 if __name__ == "__main__":
     main()
